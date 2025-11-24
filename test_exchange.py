@@ -4,6 +4,21 @@ import requests # Essencial para referenciar requests.RequestException
 from unittest.mock import patch, Mock
 from src.app import create_app
 
+# Exemplo de resposta simulada da AwesomeAPI para USD-BRL
+MOCK_SUCCESS_RESPONSE_USD_BRL = {
+    "USDBRL": {
+        "code": "USD",
+        "codein": "BRL",
+        "name": "Dólar Americano/Real Brasileiro",
+        "high": "5.4500",
+        "low": "5.4300",
+        "bid": "5.4410", # <--- Valor que você testará
+        "ask": "5.4415",
+        "timestamp": "1700000000",
+        "create_date": "2023-11-15 10:00:00"
+    }
+}
+
 # ======================================
 # FIXTURES E MOCK DADOS
 # ======================================
@@ -105,3 +120,57 @@ def test_exchange_usd_to_brl_invalid_json_format(mock_get, client):
     # O código no routes.py deve detectar isso e retornar 502
     assert response.status_code == 502
     assert data['error'] == "Unexpected response format from upstream service"
+
+    # ======================================
+# TESTES DE ROTA /users (POST)
+# ======================================
+
+def test_add_user_success(client):
+    """Teste unitário para adicionar um novo usuário via POST."""
+    new_user_data = {
+        "name": "Maria Teste",
+        "email": "maria@teste.com"
+    }
+    
+    # 1. Faz a requisição POST com o corpo JSON
+    response = client.post('/users', 
+                           data=json.dumps(new_user_data), # Converte o dicionário Python para string JSON
+                           content_type='application/json')
+    
+    data = json.loads(response.data)
+
+    # 2. Verifica se o status de criação (201) foi retornado
+    assert response.status_code == 201
+    
+    # 3. Verifica se o usuário foi criado corretamente
+    assert data['name'] == "Maria Teste"
+    assert data['email'] == "maria@teste.com"
+    
+    # O ID deve ser gerado sequencialmente (será 11 no primeiro teste do arquivo)
+    assert 'id' in data
+
+# @patch intercepta a chamada requests.get em src.routes
+@patch('requests.get')
+def test_exchange_usd_to_brl_success_new(mock_get, client):
+    """
+    Teste unitário que simula a resposta de sucesso da AwesomeAPI 
+    e verifica se o servidor Flask a parseia corretamente.
+    """
+    # 1. Configura a resposta simulada (mock)
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = MOCK_SUCCESS_RESPONSE_USD_BRL
+    mock_get.return_value = mock_response
+
+    # 2. Executa a função do Flask usando o cliente de teste
+    response = client.get('/exchange/usd-to-brl')
+    data = json.loads(response.data)
+
+    # 3. Asserções (Verificações)
+    assert response.status_code == 200
+    assert data['from'] == 'USD'
+    assert data['to'] == 'BRL'
+    assert data['bid'] == '5.4410' 
+    
+    # 4. Verifica se a chamada externa foi feita (para garantir que o mocking funcionou)
+    mock_get.assert_called_once()
